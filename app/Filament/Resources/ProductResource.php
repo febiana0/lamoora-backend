@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources;
 
+use Illuminate\Support\Facades\Storage;
 use App\Filament\Resources\ProductResource\Pages;
 use App\Models\Product;
 use Filament\Forms;
@@ -44,10 +45,15 @@ class ProductResource extends Resource
                 ->numeric()
                 ->required(),
 
+            
             Forms\Components\FileUpload::make('image')
                 ->label('Foto Produk')
                 ->image()
-                ->nullable(),
+                ->directory('products')
+                ->disk('public')
+                ->visibility('public') 
+                ->required(),
+            
 
             Forms\Components\TextInput::make('stock')
                 ->label('Stok')
@@ -80,7 +86,9 @@ class ProductResource extends Resource
                 ->label('Foto Produk')
                 ->square()
                 ->height(50)
-                ->width(50),
+                ->width(50)
+                ->url(fn ($record) => $record->image ? Storage::url($record->image) : null),
+            
 
             TextColumn::make('price')
                 ->label('Harga')
