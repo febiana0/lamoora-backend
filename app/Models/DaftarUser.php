@@ -17,7 +17,6 @@ class DaftarUser extends Model
         'email',
         'password',
         'alamat',
-        'role',
     ];
 
     protected $hidden = [

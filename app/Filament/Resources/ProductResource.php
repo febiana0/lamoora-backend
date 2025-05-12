@@ -76,9 +76,6 @@ class ProductResource extends Resource
                 ->sortable()
                 ->searchable(),
 
-            TextColumn::make('user.name')
-                ->label('Penjual'),
-
             TextColumn::make('category.name')
                 ->label('Kategori'),
 

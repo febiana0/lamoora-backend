@@ -37,12 +37,6 @@ class DaftarUserResource extends Resource
                     ->maxLength(255),
                 Forms\Components\Textarea::make('alamat')
                     ->columnSpanFull(),
-                Forms\Components\Select::make('role')
-                    ->required()
-                    ->options([
-                        'buyer' => 'Buyer',
-                        'seller' => 'Seller',
-                    ]),
             ]);
     }
 
