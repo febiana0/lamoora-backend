@@ -79,6 +79,9 @@ class ProductResource extends Resource
             TextColumn::make('category.name')
                 ->label('Kategori'),
 
+            TextColumn::make('description')
+                ->label('Deskrpsi Produk'),
+
             ImageColumn::make('image')
                 ->label('Foto Produk')
                 ->square()
