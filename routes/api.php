@@ -7,6 +7,11 @@ use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\CartController;
 use App\Http\Controllers\Api\TransactionController;
 
+//midtrans
+Route::middleware('auth:sanctum')->post('/midtrans/token', [TransactionController::class, 'getSnapToken']);
+Route::post('/midtrans/callback', [TransactionController::class, 'callback']);
+
+//checkout
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/checkout', [TransactionController::class, 'checkout']);
     Route::get('/transactions', [TransactionController::class, 'index']);

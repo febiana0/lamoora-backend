@@ -7,7 +7,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Transaction extends Model
 {
-    protected $fillable = ['user_id', 'status', 'total_price'];
+    protected $fillable = [
+        'user_id', 
+        'status', 
+        'shipping', 
+        'total_price',
+        'address',
+        'phone'];
 
     public function items()
     {

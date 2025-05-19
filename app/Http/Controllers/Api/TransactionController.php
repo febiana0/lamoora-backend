@@ -8,9 +8,76 @@ use App\Models\Transaction;
 use App\Models\TransactionItem;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Midtrans\Snap;
+use Midtrans\Config;
+use Midtrans\Notification;
 
 class TransactionController extends Controller
 {
+    public function callback(Request $request)
+{
+    $notification = new Notification();
+
+    $status = $notification->transaction_status;
+    $orderId = explode('-', $notification->order_id)[0];
+
+    $transaction = Transaction::findOrFail($orderId);
+
+    if ($status == 'settlement') {
+        $transaction->status = 'paid';
+    } elseif ($status == 'pending') {
+        $transaction->status = 'pending';
+    } elseif (in_array($status, ['deny', 'expire', 'cancel'])) {
+        $transaction->status = 'failed';
+    }
+
+    $transaction->save();
+
+    return response()->json(['message' => 'Callback handled']);
+}
+    public function getSnapToken(Request $request)
+{
+    $request->validate([
+        'transaction_id' => 'required|exists:transactions,id',
+    ]);
+
+    // Konfigurasi Midtrans
+    Config::$serverKey = config('midtrans.server_key');
+    Config::$isProduction = config('midtrans.is_production');
+    Config::$isSanitized = config('midtrans.is_sanitized');
+    Config::$is3ds = config('midtrans.is_3ds');
+
+    // Ambil transaksi
+    $transaction = Transaction::with('items.product')->findOrFail($request->transaction_id);
+    $user = $request->user();
+
+    // Buat payload untuk Midtrans Snap
+    $payload = [
+        'transaction_details' => [
+            'order_id' => $transaction->id . '-' . time(),
+            'gross_amount' => $transaction->total_price,
+        ],
+        'customer_details' => [
+            'first_name' => $user->name,
+            'email' => $user->email,
+        ],
+        'item_details' => $transaction->items->map(function ($item) {
+            return [
+                'id' => $item->product->id,
+                'price' => $item->product->price,
+                'quantity' => $item->quantity,
+                'name' => $item->product->name,
+            ];
+        })->toArray(),
+    ];
+
+    // Ambil Snap Token
+    $snapToken = Snap::getSnapToken($payload);
+
+    return response()->json([
+        'snap_token' => $snapToken,
+    ]);
+}
     public function index()
 {
     $transactions = Transaction::with('items.product')->get();
@@ -35,6 +102,12 @@ class TransactionController extends Controller
     {
         $user = $request->user();
 
+           $request->validate([
+        'shipping' => 'required|string',
+        'address' => 'required|string',
+        'phone' => 'required|string',
+    ]);
+
         // Ambil semua item keranjang user
         $cartItems = Cart::with('product')->where('user_id', $user->id)->get();
 
@@ -56,6 +129,9 @@ class TransactionController extends Controller
                 'user_id' => $user->id,
                 'status' => 'pending',
                 'total_price' => $totalPrice,
+                'shipping' => $request->shipping,
+                'address' => $request->address,   
+                'phone' => $request->phone,  
             ]);
 
             // Tambahkan item transaksi
