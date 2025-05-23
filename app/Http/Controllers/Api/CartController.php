@@ -28,17 +28,25 @@ class CartController extends Controller
             'quantity' => 'required|integer|min:1',
         ]);
 
-        $cart = Cart::updateOrCreate(
-            [
-                'user_id' => $request->user()->id,
-                'product_id' => $request->product_id
-            ],
-            [
-                'quantity' => \DB::raw('quantity + ' . $request->quantity)
-            ]
-        );
+        $cart = Cart::where('user_id', $request->user()->id)
+            ->where('product_id', $request->product_id)
+            ->first();
 
-        return response()->json(['message' => 'Item added to cart', 'cart' => $cart]);
+        if ($cart) {
+            $cart->quantity += $request->quantity;
+            $cart->save();
+        } else {
+            $cart = Cart::create([
+                'user_id' => $request->user()->id,
+                'product_id' => $request->product_id,
+                'quantity' => $request->quantity,
+            ]);
+        }
+
+        return response()->json([
+            'message' => 'Item added to cart',
+            'cart' => $cart->load('product'),
+        ]);
     }
 
     // Update jumlah produk

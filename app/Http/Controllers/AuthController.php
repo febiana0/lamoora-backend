@@ -26,7 +26,7 @@ class AuthController extends Controller
         ]);
 
         // Return user & token in response
-        return response([
+        return response()->json([
             'user' => $user,
             'token' => $user->createToken('secret')->plainTextToken
         ], 200);
@@ -43,13 +43,13 @@ class AuthController extends Controller
 
     // Coba login dengan email dan password
     if (!Auth::attempt($attrs)) {
-        return response([
+        return response()->json([
             'message' => 'Invalid credentials.'
         ], 403);
     }
 
     // Kembalikan data user dan token
-    return response([
+    return response()->json([
         'user' => auth()->user(),
         'token' => auth()->user()->createToken('secret')->plainTextToken
     ], 200);
@@ -67,7 +67,7 @@ class AuthController extends Controller
 }
     
     public function user(){
-        return response([
+        return response()->json([
             'user' => auth()->user()
         ], 200);
     }
