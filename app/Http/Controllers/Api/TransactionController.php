@@ -14,27 +14,14 @@ use Midtrans\Notification;
 
 class TransactionController extends Controller
 {
-    public function callback(Request $request)
+    public function __construct()
     {
-        $notification = new Notification();
-
-        $status = $notification->transaction_status;
-        $orderId = explode('-', $notification->order_id)[0];
-
-        $transaction = Transaction::findOrFail($orderId);
-
-        if ($status == 'settlement') {
-            $transaction->status = 'paid';
-        } elseif ($status == 'pending') {
-            $transaction->status = 'pending';
-        } elseif (in_array($status, ['deny', 'expire', 'cancel'])) {
-            $transaction->status = 'failed';
-        }
-
-        $transaction->save();
-
-        return response()->json(['message' => 'Callback handled']);
+        Config::$serverKey = config('midtrans.server_key');
+        Config::$isProduction = config('midtrans.is_production');
+        Config::$isSanitized = true;
+        Config::$is3ds = true;
     }
+
 
     public function getSnapToken(Request $request)
     {
@@ -42,42 +29,41 @@ class TransactionController extends Controller
             'transaction_id' => 'required|exists:transactions,id',
         ]);
 
-        // Konfigurasi Midtrans
-        Config::$serverKey = config('midtrans.server_key');
-        Config::$isProduction = config('midtrans.is_production');
-        Config::$isSanitized = config('midtrans.is_sanitized');
-        Config::$is3ds = config('midtrans.is_3ds');
-
-        // Ambil transaksi
         $transaction = Transaction::with('items.product')->findOrFail($request->transaction_id);
         $user = $request->user();
 
-        // Buat payload untuk Midtrans Snap
+        $orderId = $transaction->id . '-' . time(); // ID unik agar tidak bentrok
+        $transaction->update(['order_id' => $orderId]); // Simpan agar bisa digunakan di callback
+
+        $itemDetails = $transaction->items->map(function ($item) {
+            return [
+                'id' => (string) $item->product->id,
+                'price' => (int) $item->price,
+                'quantity' => (int) $item->quantity,
+                'name' => substr($item->product->name, 0, 50), // max 50 char
+            ];
+        })->toArray();
+
         $payload = [
             'transaction_details' => [
-                'order_id' => $transaction->id . '-' . time(),
-                'gross_amount' => $transaction->total_price,
+                'order_id' => $orderId,
+                'gross_amount' => (int) $transaction->total_price,
             ],
             'customer_details' => [
                 'first_name' => $user->name,
                 'email' => $user->email,
+                'phone' => $request->phone,
             ],
-            'item_details' => $transaction->items->map(function ($item) {
-                return [
-                    'id' => $item->product->id,
-                    'price' => $item->product->price,
-                    'quantity' => $item->quantity,
-                    'name' => $item->product->name,
-                ];
-            })->toArray(),
+            'item_details' => $itemDetails,
         ];
 
-        // Ambil Snap Token
         $snapToken = Snap::getSnapToken($payload);
 
-        return response()->json([
+       return response()->json([
+            'message' => 'Checkout berhasil',
+            'transaction' => $transaction,
             'snap_token' => $snapToken,
-        ]);
+]);
     }
 
     public function index()
@@ -91,91 +77,109 @@ class TransactionController extends Controller
         $transaction = Transaction::with('items.product')->find($id);
 
         if (!$transaction) {
-            return response()->json([
-                'message' => 'Transaksi tidak ditemukan'
-            ], 404);
+            return response()->json(['message' => 'Transaksi tidak ditemukan'], 404);
         }
 
         return response()->json($transaction);
     }
 
     public function checkout(Request $request)
-    {
-        $user = $request->user();
+{
+    $user = $request->user();
 
-        $request->validate([
-            'shipping' => 'required|string',
-            'address' => 'required|string',
-            'phone' => 'required|string',
+    $request->validate([
+        'shipping' => 'required|string',
+        'address' => 'required|string',
+        'phone' => 'required|string',
+    ]);
+
+    $cartItems = Cart::where('user_id', $user->id)->with('product')->get();
+
+    if ($cartItems->isEmpty()) {
+        return response()->json(['message' => 'Keranjang kosong'], 400);
+    }
+
+    $totalPrice = $cartItems->sum(function ($item) {
+        return $item->product->price * $item->quantity;
+    });
+
+    DB::beginTransaction();
+    try {
+        $transaction = Transaction::create([
+            'user_id' => $user->id,
+            'status' => 'pending',
+            'total_price' => $totalPrice,
+            'shipping' => $request->shipping,
+            'address' => $request->address,
+            'phone' => $request->phone,
         ]);
 
-        $cartItems = Cart::where('user_id', $user->id)->get();
+        foreach ($cartItems as $item) {
+            $product = $item->product;
 
-        if ($cartItems->isEmpty()) {
-            return response()->json([
-                'message' => 'Keranjang kosong'
-            ], 400);
-        }
-
-        $totalPrice = $cartItems->sum(function ($item) {
-            return $item->product->price * $item->quantity;
-        });
-
-        DB::beginTransaction();
-        try {
-            $transaction = Transaction::create([
-                'user_id' => $user->id,
-                'status' => 'pending',
-                'total_price' => $totalPrice,
-                'shipping' => $request->shipping,
-                'address' => $request->address,
-                'phone' => $request->phone,
-            ]);
-
-            foreach ($cartItems as $item) {
-                // Ambil produk langsung dari database agar fresh
-                $product = $item->product()->first();
-
-                if (!$product) {
-                    DB::rollBack();
-                    return response()->json([
-                        'message' => 'Produk tidak ditemukan.'
-                    ], 400);
-                }
-
-                if ($product->stock < $item->quantity) {
-                    DB::rollBack();
-                    return response()->json([
-                        'message' => 'Stok produk tidak mencukupi untuk ' . $product->name
-                    ], 400);
-                }
-
-                TransactionItem::create([
-                    'transaction_id' => $transaction->id,
-                    'product_id' => $item->product_id,
-                    'quantity' => $item->quantity,
-                    'price' => $product->price,
-                ]);
-
-                $product->stock -= $item->quantity;
-                $product->save();
+            if ($product->stock < $item->quantity) {
+                DB::rollBack();
+                return response()->json([
+                    'message' => 'Stok produk tidak mencukupi untuk ' . $product->name,
+                ], 400);
             }
 
-            Cart::where('user_id', $user->id)->delete();
-
-            DB::commit();
-
-            return response()->json([
-                'message' => 'Checkout berhasil',
-                'transaction' => $transaction->load('items.product')
+            TransactionItem::create([
+                'transaction_id' => $transaction->id,
+                'product_id' => $product->id,
+                'quantity' => $item->quantity,
+                'price' => $product->price,
             ]);
-        } catch (\Exception $e) {
-            DB::rollBack();
 
-            return response()->json([
-                'message' => 'Checkout gagal',
-                'error' => $e->getMessage()
-            ], 500);
+            $product->decrement('stock', $item->quantity);
         }
+
+        Cart::where('user_id', $user->id)->delete();
+
+        DB::commit();
+
+        // Generate Snap Token
+        $orderId = $transaction->id . '-' . time();
+        $transaction->update(['order_id' => $orderId]);
+
+        $itemDetails = $transaction->items->map(function ($item) {
+            return [
+                'id' => (string) $item->product->id,
+                'price' => (int) $item->price,
+                'quantity' => (int) $item->quantity,
+                'name' => substr($item->product->name, 0, 50),
+            ];
+        })->toArray();
+
+        $payload = [
+            'transaction_details' => [
+                'order_id' => $orderId,
+                'gross_amount' => (int) $transaction->total_price,
+            ],
+            'customer_details' => [
+                'first_name' => $user->name,
+                'email' => $user->email,
+                'phone' => $request->phone,
+            ],
+            'item_details' => $itemDetails,
+        ];
+
+        $snapToken = \Midtrans\Snap::getSnapToken($payload);
+
+        return response()->json([
+            'message' => 'Checkout berhasil',
+            'transaction' => $transaction->load('items.product'),
+            'snap_token' => $snapToken,
+        ]);
+    } catch (\Exception $e) {
+        DB::rollBack();
+
+        return response()->json([
+            'message' => 'Checkout gagal',
+            'error' => $e->getMessage(),
+        ], 500);
     }
+}
+
+
 }
