@@ -1,5 +1,10 @@
 <?php
 
+namespace App\Filament\Pages;
+
+use Filament\Pages\Page;
+use App\Filament\Widgets\DashboardStats;
+
 class Dashboard extends Page
 {
     protected static string $view = 'filament.pages.custom_dashboard';
