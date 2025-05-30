@@ -57,7 +57,22 @@ class TransactionController extends Controller
             'item_details' => $itemDetails,
         ];
 
-        $snapToken = Snap::getSnapToken($payload);
+        \Log::info('MIDTRANS ENV', [
+            'server_key' => config('midtrans.server_key'),
+            'is_production' => config('midtrans.is_production'),
+            'payload' => $payload,
+        ]);
+
+        try {
+            $snapToken = \Midtrans\Snap::getSnapToken($payload);
+            \Log::info('Snap Token', [$snapToken]);
+        } catch (\Exception $e) {
+            \Log::error('Midtrans Error', [$e->getMessage()]);
+            return response()->json([
+                'message' => 'Midtrans error',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
 
        return response()->json([
             'message' => 'Checkout berhasil',
@@ -164,7 +179,22 @@ class TransactionController extends Controller
             'item_details' => $itemDetails,
         ];
 
-        $snapToken = \Midtrans\Snap::getSnapToken($payload);
+        \Log::info('MIDTRANS ENV', [
+            'server_key' => config('midtrans.server_key'),
+            'is_production' => config('midtrans.is_production'),
+            'payload' => $payload,
+        ]);
+
+        try {
+            $snapToken = \Midtrans\Snap::getSnapToken($payload);
+            \Log::info('Snap Token', [$snapToken]);
+        } catch (\Exception $e) {
+            \Log::error('Midtrans Error', [$e->getMessage()]);
+            return response()->json([
+                'message' => 'Midtrans error',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
 
         return response()->json([
             'message' => 'Checkout berhasil',
