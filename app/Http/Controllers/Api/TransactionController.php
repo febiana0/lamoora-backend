@@ -211,5 +211,53 @@ class TransactionController extends Controller
     }
 }
 
+public function midtransCallback(Request $request)
+{
+    $notif = new \Midtrans\Notification();
 
+    $transaction = $notif->transaction_status;
+    $orderId = $notif->order_id;
+
+    // Ambil id transaksi asli (karena order_id = {id}-{timestamp})
+    $trxId = explode('-', $orderId)[0];
+
+    $trx = \App\Models\Transaction::find($trxId);
+
+    if (!$trx) {
+        return response()->json(['message' => 'Transaction not found'], 404);
+    }
+
+    // Mapping status Midtrans ke status aplikasi
+    if ($transaction == 'capture' || $transaction == 'settlement') {
+        $trx->status = 'paid';
+    } elseif ($transaction == 'pending') {
+        $trx->status = 'pending';
+    } elseif (in_array($transaction, ['deny', 'expire', 'cancel'])) {
+        $trx->status = 'failed';
+    }
+    $trx->save();
+
+    return response()->json(['message' => 'Notification handled']);
+}
+
+public function updateStatus(Request $request, $id)
+{
+    $request->validate([
+        'status' => 'required|string|in:pending,paid,shipped,failed',
+    ]);
+
+    $transaction = Transaction::find($id);
+
+    if (!$transaction) {
+        return response()->json(['message' => 'Transaksi tidak ditemukan'], 404);
+    }
+
+    $transaction->status = $request->status;
+    $transaction->save();
+
+    return response()->json([
+        'message' => 'Status transaksi berhasil diupdate',
+        'transaction' => $transaction,
+    ]);
+}
 }
