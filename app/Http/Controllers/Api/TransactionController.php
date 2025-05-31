@@ -81,10 +81,17 @@ class TransactionController extends Controller
 ]);
     }
 
-    public function index()
+    public function index(Request $request)
     {
-        $transactions = Transaction::with('items.product')->get();
-        return response()->json($transactions);
+        $user = $request->user();
+        $transactions = \App\Models\Transaction::with('items.product')
+            ->where('user_id', $user->id)
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        return response()->json([
+            'data' => $transactions
+        ]);
     }
 
     public function show($id)
