@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\TransactionController;
 Route::middleware('auth:sanctum')->post('/midtrans/token', [TransactionController::class, 'getSnapToken']);
 Route::post('/midtrans/callback', [TransactionController::class, 'callback']);
 
+
 //checkout
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/checkout', [TransactionController::class, 'checkout']);

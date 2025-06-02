@@ -267,4 +267,13 @@ public function updateStatus(Request $request, $id)
         'transaction' => $transaction,
     ]);
 }
+
+public function callback(Request $request)
+{
+    // Untuk test, balas saja data yang diterima
+    return response()->json([
+        'message' => 'Callback received',
+        'data' => $request->all()
+    ]);
+}
 }
