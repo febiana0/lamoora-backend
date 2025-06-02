@@ -220,31 +220,43 @@ class TransactionController extends Controller
 
 public function midtransCallback(Request $request)
 {
-    $notif = new \Midtrans\Notification();
+    \Log::info('Midtrans callback received', $request->all());
+    
+    try {
+        Config::$serverKey = config('midtrans.server_key');
+        Config::$isProduction = config('midtrans.is_production');
+        
+        $notif = new \Midtrans\Notification();
 
-    $transaction = $notif->transaction_status;
-    $orderId = $notif->order_id;
+        $transaction = $notif->transaction_status;
+        $orderId = $notif->order_id;
 
-    // Ambil id transaksi asli (karena order_id = {id}-{timestamp})
-    $trxId = explode('-', $orderId)[0];
+        // Ambil id transaksi asli (karena order_id = {id}-{timestamp})
+        $trxId = explode('-', $orderId)[0];
 
-    $trx = \App\Models\Transaction::find($trxId);
+        $trx = \App\Models\Transaction::find($trxId);
 
-    if (!$trx) {
-        return response()->json(['message' => 'Transaction not found'], 404);
+        if (!$trx) {
+            return response()->json(['message' => 'Transaction not found'], 404);
+        }
+
+        // Mapping status Midtrans ke status aplikasi
+        if ($transaction == 'capture' || $transaction == 'settlement') {
+            $trx->status = 'paid';
+        } elseif ($transaction == 'pending') {
+            $trx->status = 'pending';
+        } elseif (in_array($transaction, ['deny', 'expire', 'cancel'])) {
+            $trx->status = 'failed';
+        }
+        $trx->save();
+
+        \Log::info('Transaction updated', ['status' => $trx->status]);
+        
+        return response()->json(['message' => 'Notification handled']);
+    } catch (\Exception $e) {
+        \Log::error('Midtrans callback error', ['error' => $e->getMessage()]);
+        return response()->json(['message' => 'Error processing notification'], 500);
     }
-
-    // Mapping status Midtrans ke status aplikasi
-    if ($transaction == 'capture' || $transaction == 'settlement') {
-        $trx->status = 'paid';
-    } elseif ($transaction == 'pending') {
-        $trx->status = 'pending';
-    } elseif (in_array($transaction, ['deny', 'expire', 'cancel'])) {
-        $trx->status = 'failed';
-    }
-    $trx->save();
-
-    return response()->json(['message' => 'Notification handled']);
 }
 
 public function updateStatus(Request $request, $id)
@@ -268,12 +280,4 @@ public function updateStatus(Request $request, $id)
     ]);
 }
 
-public function callback(Request $request)
-{
-    // Untuk test, balas saja data yang diterima
-    return response()->json([
-        'message' => 'Callback received',
-        'data' => $request->all()
-    ]);
-}
 }

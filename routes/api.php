@@ -9,7 +9,7 @@ use App\Http\Controllers\Api\TransactionController;
 
 //midtrans
 Route::middleware('auth:sanctum')->post('/midtrans/token', [TransactionController::class, 'getSnapToken']);
-Route::post('/midtrans/callback', [TransactionController::class, 'callback']);
+Route::post('/midtrans/callback', [TransactionController::class, 'midtransCallback']);
 
 
 //checkout
