@@ -221,7 +221,6 @@ class TransactionController extends Controller
 public function midtransCallback(Request $request)
 {
     \Log::info('Midtrans callback received', $request->all());
-    
     try {
         Config::$serverKey = config('midtrans.server_key');
         Config::$isProduction = config('midtrans.is_production');
@@ -231,12 +230,15 @@ public function midtransCallback(Request $request)
         $transaction = $notif->transaction_status;
         $orderId = $notif->order_id;
 
-        // Ambil id transaksi asli (karena order_id = {id}-{timestamp})
+        \Log::info('Callback order_id', ['order_id' => $orderId]);
+
         $trxId = explode('-', $orderId)[0];
+        \Log::info('Callback trxId', ['trxId' => $trxId]);
 
         $trx = \App\Models\Transaction::find($trxId);
 
         if (!$trx) {
+            \Log::error('Transaction not found', ['order_id' => $orderId, 'trxId' => $trxId]);
             return response()->json(['message' => 'Transaction not found'], 404);
         }
 
