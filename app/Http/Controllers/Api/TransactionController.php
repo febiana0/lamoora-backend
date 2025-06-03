@@ -220,44 +220,69 @@ class TransactionController extends Controller
 
 public function midtransCallback(Request $request)
 {
-    \Log::info('Midtrans callback received', $request->all());
+    \Log::info('Midtrans callback received - FULL DATA', [
+        'all_data' => $request->all(),
+        'order_id' => $request->order_id,
+        'transaction_status' => $request->transaction_status,
+        'payment_type' => $request->payment_type
+    ]);
+
     try {
-        Config::$serverKey = config('midtrans.server_key');
-        Config::$isProduction = config('midtrans.is_production');
+        // Coba ambil data tanpa Notification class dulu
+        $transaction_status = $request->transaction_status;
+        $order_id = $request->order_id;
         
-        $notif = new \Midtrans\Notification();
-
-        $transaction = $notif->transaction_status;
-        $orderId = $notif->order_id;
-
-        \Log::info('Callback order_id', ['order_id' => $orderId]);
-
-        $trxId = explode('-', $orderId)[0];
-        \Log::info('Callback trxId', ['trxId' => $trxId]);
-
+        \Log::info('Processing order', ['order_id' => $order_id]);
+        
+        $trxId = explode('-', $order_id)[0];
+        \Log::info('Extracted transaction ID', ['trxId' => $trxId]);
+        
         $trx = \App\Models\Transaction::find($trxId);
-
+        
         if (!$trx) {
-            \Log::error('Transaction not found', ['order_id' => $orderId, 'trxId' => $trxId]);
+            \Log::error('Transaction not found in database', [
+                'trxId' => $trxId,
+                'order_id' => $order_id
+            ]);
             return response()->json(['message' => 'Transaction not found'], 404);
         }
+        
+        \Log::info('Found transaction', [
+            'transaction_id' => $trx->id,
+            'current_status' => $trx->status
+        ]);
 
-        // Mapping status Midtrans ke status aplikasi
-        if ($transaction == 'capture' || $transaction == 'settlement') {
+        // Mapping status
+        if ($transaction_status == 'capture' || $transaction_status == 'settlement') {
             $trx->status = 'paid';
-        } elseif ($transaction == 'pending') {
+        } elseif ($transaction_status == 'pending') {
             $trx->status = 'pending';
-        } elseif (in_array($transaction, ['deny', 'expire', 'cancel'])) {
+        } elseif (in_array($transaction_status, ['deny', 'expire', 'cancel'])) {
             $trx->status = 'failed';
         }
-        $trx->save();
-
-        \Log::info('Transaction updated', ['status' => $trx->status]);
         
-        return response()->json(['message' => 'Notification handled']);
+        $trx->save();
+        
+        \Log::info('Transaction status updated', [
+            'transaction_id' => $trx->id,
+            'old_status' => $trx->getOriginal('status'),
+            'new_status' => $trx->status
+        ]);
+        
+        return response()->json([
+            'message' => 'Notification handled successfully',
+            'order_id' => $order_id,
+            'status' => $trx->status
+        ]);
     } catch (\Exception $e) {
-        \Log::error('Midtrans callback error', ['error' => $e->getMessage()]);
-        return response()->json(['message' => 'Error processing notification'], 500);
+        \Log::error('Midtrans callback error', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+        return response()->json([
+            'message' => 'Error processing notification',
+            'error' => $e->getMessage()
+        ], 500);
     }
 }
 
